@@ -54,18 +54,36 @@ def http_get(url, referer=None, xhr=False, retries=4):
     raise last
 
 
-# Длинные названия статей (рекорд — ст. 228 УК, 351 симв.) в urlencode-кириллице
-# раздувают URL за ~2 КБ, и прокси sudact отвечает 502 на любой запрос. Фильтр
-# матчит название по префиксу, а «Статья N.» в начале уникальна, поэтому режем.
-LAW_NAME_MAX = 250
+# Ограничение sudact (проверено 2026-07-19, воспроизводится и в браузере):
+# фильтр передаёт ПОЛНОЕ название статьи в URL, кириллица в urlencode — 6 байт
+# на символ, и на ~2000 байт их nginx отвечает 502. Статьи с названием длиннее
+# ~330 символов (рекорд — ст. 228 УК, 351) отфильтровать на sudact нельзя вообще.
+# ВАЖНО: усекать название НЕЛЬЗЯ — при неточном совпадении sudact молча
+# игнорирует фильтр и отдаёт произвольные свежие документы (в базу юриста
+# попадали гражданские дела вместо приговоров). Лучше пропустить статью, чем
+# засорить базу. От молчаливого расхождения защищает ещё и проверка ниже.
+URL_LIMIT = 1950
+
+
+def article_pattern(term):
+    """Регэксп «эта статья упомянута в тексте» для проверки выдачи.
+
+    '228 УК' -> 228, но НЕ 228.1; '171.1 УК' -> ровно 171.1.
+    """
+    m = re.search(r"\d+(?:\.\d+)?", term)
+    if not m:
+        return None
+    num = m.group(0)
+    return re.compile(r"\b" + re.escape(num) + r"(?![.\d])" if "." not in num
+                      else r"\b" + re.escape(num) + r"\b")
 
 
 def resolve_law(term):
-    """Автокомплит sudact: '171.1 УК' -> имя статьи для фильтра (усечённое)."""
+    """Автокомплит sudact: '171.1 УК' -> полное имя статьи для фильтра."""
     url = f"{BASE}/autocomplete/regular/lawchunkinfo/?term=" + urllib.parse.quote_plus(term)
     try:
         items = json.loads(http_get(url, referer=f"{BASE}/regular/doc/", xhr=True))
-        return items[0][:LAW_NAME_MAX] if items else None
+        return items[0] if items else None
     except Exception as e:
         print(f"  autocomplete FAIL {term}: {e}")
         return None
@@ -167,6 +185,15 @@ def process_article(term):
     if not law:
         print("  статья не найдена в автокомплите, пропуск")
         return
+    probe = f"{BASE}/regular/doc_ajax/?" + urllib.parse.urlencode({
+        "regular-lawchunkinfo": law, "regular-workflow_stage": "10",
+        "regular-date_from": "01.01.2000", "regular-date_to": "01.01.2000", "_": "0"})
+    if len(probe) > URL_LIMIT:
+        print(f"  ПРОПУСК: название статьи {len(law)} симв. → URL {len(probe)} байт, "
+              f"sudact ответит 502 (их ограничение, воспроизводится и в браузере). "
+              f"Практику по этой статье собирать вручную.")
+        return
+
     art_dir = os.path.join(OUT_BASE, slug_for(term))
     cases_dir = os.path.join(art_dir, "cases")
     os.makedirs(cases_dir, exist_ok=True)
@@ -178,6 +205,11 @@ def process_article(term):
     date_to = datetime.now()
     date_from = date_to - timedelta(days=365)
     new_count = 0
+    # Страховка от молчаливого слёта фильтра: если подряд идут документы, где
+    # искомая статья вообще не упоминается, значит sudact вернул произвольную
+    # выдачу — прекращаем, чтобы не засорить базу знаний чужими делами.
+    pattern = article_pattern(term)
+    mismatch_streak = 0
     for stage, stage_name in STAGES:
         if new_count >= MAX_NEW_PER_ARTICLE:
             break
@@ -195,6 +227,16 @@ def process_article(term):
             if len(text) < 500:
                 seen.add(did)
                 continue
+            if pattern and not pattern.search(text):
+                mismatch_streak += 1
+                seen.add(did)
+                if mismatch_streak >= 5:
+                    print(f"  ⚠️ ФИЛЬТР СЛЕТЕЛ: 5 документов подряд без упоминания "
+                          f"«{term}» — sudact вернул произвольную выдачу. "
+                          f"Статья пропущена, база не засорена.")
+                    return
+                continue
+            mismatch_streak = 0
             dm = re.search(r"от (\d+) (\S+) (\d{4})", title)
             months = {"января": "01", "февраля": "02", "марта": "03", "апреля": "04",
                       "мая": "05", "июня": "06", "июля": "07", "августа": "08",
