@@ -30,15 +30,28 @@ SLEEP = 2.5
 DOC_TEXT_LIMIT = 150_000
 
 
-def http_get(url, referer=None, xhr=False):
-    req = urllib.request.Request(url)
-    req.add_header("User-Agent", UA)
-    if referer:
-        req.add_header("Referer", referer)
-    if xhr:
-        req.add_header("X-Requested-With", "XMLHttpRequest")
-    with urllib.request.urlopen(req, timeout=90) as r:
-        return r.read().decode("utf-8", "replace")
+def http_get(url, referer=None, xhr=False, retries=4):
+    """GET с ретраями: sudact периодически отдаёт 502/503, и без повтора
+    статья молча выпадала из ежемесячного дайджеста."""
+    last = None
+    for attempt in range(retries):
+        req = urllib.request.Request(url)
+        req.add_header("User-Agent", UA)
+        if referer:
+            req.add_header("Referer", referer)
+        if xhr:
+            req.add_header("X-Requested-With", "XMLHttpRequest")
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:
+                return r.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code < 500:
+                raise
+        except Exception as e:  # таймауты, обрывы соединения
+            last = e
+        time.sleep(5 * (attempt + 1))
+    raise last
 
 
 def resolve_law(term):
