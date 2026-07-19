@@ -34,7 +34,7 @@ Telegram-бот с AI-агентом «юрист РФ»: консультаци
 
 ```bash
 # 1. Код
-git clone <этот-репозиторий> /opt/lawyer-agent
+git clone https://github.com/bioauraio/advocate.git /opt/lawyer-agent
 cd /opt/lawyer-agent
 
 # 2. Зависимости бота (poetry кладёт venv в проект)
