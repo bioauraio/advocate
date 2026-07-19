@@ -54,12 +54,18 @@ def http_get(url, referer=None, xhr=False, retries=4):
     raise last
 
 
+# Длинные названия статей (рекорд — ст. 228 УК, 351 симв.) в urlencode-кириллице
+# раздувают URL за ~2 КБ, и прокси sudact отвечает 502 на любой запрос. Фильтр
+# матчит название по префиксу, а «Статья N.» в начале уникальна, поэтому режем.
+LAW_NAME_MAX = 250
+
+
 def resolve_law(term):
-    """Автокомплит sudact: '171.1 УК' -> полное имя статьи для фильтра."""
+    """Автокомплит sudact: '171.1 УК' -> имя статьи для фильтра (усечённое)."""
     url = f"{BASE}/autocomplete/regular/lawchunkinfo/?term=" + urllib.parse.quote_plus(term)
     try:
         items = json.loads(http_get(url, referer=f"{BASE}/regular/doc/", xhr=True))
-        return items[0] if items else None
+        return items[0][:LAW_NAME_MAX] if items else None
     except Exception as e:
         print(f"  autocomplete FAIL {term}: {e}")
         return None
