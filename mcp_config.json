@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "telegram": {
+      "type": "stdio",
+      "command": "/opt/lawyer-agent/bot/.venv/bin/python",
+      "args": ["-m", "src.mcp.telegram_server"],
+      "env": {"PYTHONPATH": "/opt/lawyer-agent/bot"}
+    }
+  }
+}

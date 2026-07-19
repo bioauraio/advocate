@@ -1,0 +1,24 @@
+# секреты и runtime
+.env
+data/bot.db*
+*.log
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# node
+node_modules/
+
+# личные данные рабочей папки агента — НИКОГДА не коммитить
+agent-workspace/cases/*
+!agent-workspace/cases/README.md
+agent-workspace/users/*
+!agent-workspace/users/README.md
+agent-workspace/uploads/
+agent-workspace/assets/letterhead_logo.png
+agent-workspace/tools/letterhead.json

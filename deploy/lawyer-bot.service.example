@@ -1,0 +1,27 @@
+# systemd-юнит для бота агента-юриста.
+# Скопируй в /etc/systemd/system/lawyer-bot.service, поправь пути/пользователя,
+# затем: systemctl daemon-reload && systemctl enable --now lawyer-bot
+[Unit]
+Description=Lawyer Agent Telegram Bot (Claude)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Пользователь, под которым выполнен `claude auth login`
+User=root
+WorkingDirectory=/opt/lawyer-agent/bot
+Environment=PATH=/usr/bin:/usr/local/bin:/root/.local/bin:/bin
+Environment=HOME=/root
+# Раскомментируй, если нужен прокси до Telegram/Anthropic:
+#Environment=HTTP_PROXY=http://127.0.0.1:8118
+#Environment=HTTPS_PROXY=http://127.0.0.1:8118
+#Environment=NO_PROXY=localhost,127.0.0.1
+ExecStart=/opt/lawyer-agent/bot/.venv/bin/claude-telegram-bot
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/lawyer-bot.log
+StandardError=append:/var/log/lawyer-bot.log
+
+[Install]
+WantedBy=multi-user.target
